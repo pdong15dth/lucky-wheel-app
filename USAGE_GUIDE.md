@@ -102,10 +102,22 @@ Lucky Wheel là ứng dụng vòng quay may mắn với các tính năng:
 
 | Nút | Chức Năng |
 |-----|-----------|
+| ➕ **Thêm người tham gia** | Thêm người thủ công (khi user không tự đăng ký được) |
 | 🎰 **QUAY** | Bắt đầu quay vòng may mắn |
 | 🔒 **Khóa/Mở Khóa** | Khóa hoặc mở khóa điểm danh |
 | 🔄 **Reset Game** | Reset trạng thái game (giữ người tham gia) |
 | 🗑️ **Xóa Hết** | Xóa tất cả người tham gia |
+
+### Thêm Người Tham Gia Thủ Công
+
+Trong trường hợp người dùng không thể tự điểm danh (lỗi mạng, điện thoại hư, v.v.), Admin có thể thêm họ vào danh sách:
+
+1. Ở panel bên phải, tìm ô **"➕ Thêm người tham gia"**
+2. Nhập **họ tên đầy đủ** của người cần thêm
+3. Nhấn nút **"Thêm"**
+4. Hệ thống sẽ tự tạo biệt danh nếu tên bị trùng
+
+> ⚠️ **Lưu ý**: Không thể thêm người mới khi đã **khóa Check-in**. Cần mở khóa trước.
 
 ### Quy Trình Quay Số
 

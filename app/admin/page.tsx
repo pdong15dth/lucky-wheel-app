@@ -17,7 +17,8 @@ import {
     resetGame,
     clearAllParticipants,
     subscribeToParticipantsRealtime,
-    broadcastGameEvent
+    broadcastGameEvent,
+    addParticipant
 } from '@/lib/supabase';
 
 export default function AdminPage() {
@@ -36,6 +37,8 @@ export default function AdminPage() {
     const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [newParticipantName, setNewParticipantName] = useState('');
+    const [isAddingParticipant, setIsAddingParticipant] = useState(false);
 
     // Custom dialog hook
     const { dialogState, showAlert, showConfirm, closeDialog } = useDialog();
@@ -255,6 +258,32 @@ export default function AdminPage() {
         );
     };
 
+    // Handle add participant manually
+    const handleAddParticipant = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const name = newParticipantName.trim();
+        if (!name) return;
+
+        setIsAddingParticipant(true);
+        const result = await addParticipant(name);
+
+        if (result.success) {
+            setNewParticipantName('');
+            if (result.aliasInfo.isDuplicate) {
+                showAlert(
+                    '✅ Thêm thành công',
+                    `Đã thêm "${name}" với biệt danh "${result.aliasInfo.alias}" (tên bị trùng).`
+                );
+            } else {
+                showAlert('✅ Thêm thành công', `Đã thêm "${name}" vào danh sách.`);
+            }
+        } else {
+            showAlert('❌ Lỗi', 'Không thể thêm người tham gia. Vui lòng thử lại.');
+        }
+
+        setIsAddingParticipant(false);
+    };
+
     if (!isAuthenticated || isLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -394,6 +423,39 @@ export default function AdminPage() {
                 <div className="space-y-6">
                     {/* Prize Display */}
                     <PrizeDisplay winners={winners} />
+
+                    {/* Add Participant Form */}
+                    <div className="cyber-card">
+                        <h3 className="font-bold text-[var(--neon-cyan)] mb-3 flex items-center gap-2">
+                            ➕ Thêm người tham gia
+                        </h3>
+                        <form onSubmit={handleAddParticipant} className="flex gap-2">
+                            <input
+                                type="text"
+                                value={newParticipantName}
+                                onChange={(e) => setNewParticipantName(e.target.value)}
+                                placeholder="Nhập họ tên..."
+                                disabled={isAddingParticipant || isCheckinLocked}
+                                className="flex-1 px-3 py-2 bg-[var(--cyber-bg-tertiary)] border border-[var(--text-muted)] rounded-lg text-white placeholder-[var(--text-muted)] focus:border-[var(--neon-cyan)] focus:outline-none focus:ring-1 focus:ring-[var(--neon-cyan)] disabled:opacity-50"
+                            />
+                            <button
+                                type="submit"
+                                disabled={!newParticipantName.trim() || isAddingParticipant || isCheckinLocked}
+                                className="cyber-button primary px-4 py-2 disabled:opacity-50"
+                            >
+                                {isAddingParticipant ? (
+                                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                    'Thêm'
+                                )}
+                            </button>
+                        </form>
+                        {isCheckinLocked && (
+                            <p className="mt-2 text-xs text-[var(--neon-yellow)]">
+                                🔒 Mở khóa Check-in để thêm người mới
+                            </p>
+                        )}
+                    </div>
 
                     {/* Participant List */}
                     <ParticipantList
