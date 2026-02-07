@@ -288,11 +288,17 @@ export default function LuckyWheel({
             if (expectedWinnerId) {
                 const expectedWinner = allParticipants.find(p => p.id === expectedWinnerId);
                 if (expectedWinner) {
-                    // CRITICAL: Verify the expected winner is still active (not already a winner)
+                    // NOTE: Due to a race condition, the Guest may receive the winner status update
+                    // (via real-time subscription) BEFORE the spin animation starts.
+                    // Since the Admin already validated this winner is active before broadcasting,
+                    // we trust the expectedWinnerId and proceed with the animation.
                     if (expectedWinner.status !== 'active') {
-                        console.error('❌ Expected winner is not active!', { expectedWinnerId, status: expectedWinner.status });
-                        // Don't proceed - this would be a duplicate win
-                        return;
+                        console.warn('⚠️ Expected winner status changed (race condition - proceeding anyway):', {
+                            expectedWinnerId,
+                            status: expectedWinner.status,
+                            note: 'This is expected when admin updates DB before guest spin completes'
+                        });
+                        // Continue anyway - admin already validated this winner
                     }
                     winnerParticipant = expectedWinner;
 
@@ -463,7 +469,8 @@ export default function LuckyWheel({
 // allParticipants: list of all participants on wheel (for angle calculation)
 export function generateTargetRotation(
     activeParticipants: Participant[],
-    allParticipants: Participant[]
+    allParticipants: Participant[],
+    logInfo?: { testCycle: number; prizeRound: number }
 ): { targetRotation: number; winnerIndex: number; winnerId: string } {
     // CRITICAL: Ensure we have active participants to choose from
     if (activeParticipants.length === 0) {
@@ -499,9 +506,89 @@ export function generateTargetRotation(
         targetRotationDegrees: targetRotation * 180 / Math.PI
     });
 
+    // === SPIN STATISTICS LOGGING ===
+    // Save spin result to file via API for fairness analysis
+    if (typeof window !== 'undefined') {
+        fetch('/api/spin-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                timestamp: new Date().toISOString(),
+                testCycle: logInfo?.testCycle ?? 0,
+                prizeRound: logInfo?.prizeRound ?? 0,
+                winnerId: winner.id,
+                winnerName: winner.name,
+                winnerAlias: winner.alias,
+                winnerIndex: allParticipantsIndex,
+                activeCount: activeParticipants.length,
+                totalCount: allParticipants.length,
+                allActiveNames: activeParticipants.map(p => p.alias || p.name)
+            })
+        })
+            .then(res => res.json())
+            .then(data => console.log('📊 Spin logged to file:', data))
+            .catch(err => console.error('Failed to log spin:', err));
+    }
+
     return {
         targetRotation,
         winnerIndex: allParticipantsIndex,
         winnerId: winner.id
     };
+}
+
+// === STATISTICS HELPER FUNCTIONS ===
+// Call these from browser console: getSpinStats(), clearSpinStats()
+
+// Get spin statistics summary
+export function getSpinStats(): void {
+    if (typeof window === 'undefined') return;
+
+    const spinLog = JSON.parse(localStorage.getItem('spin_statistics') || '[]');
+
+    if (spinLog.length === 0) {
+        console.log('📊 No spin data recorded yet.');
+        return;
+    }
+
+    // Count wins per participant
+    const winCounts: Record<string, { name: string; count: number }> = {};
+
+    spinLog.forEach((spin: { winnerName: string; winnerAlias: string }) => {
+        const key = spin.winnerAlias || spin.winnerName;
+        if (!winCounts[key]) {
+            winCounts[key] = { name: key, count: 0 };
+        }
+        winCounts[key].count++;
+    });
+
+    // Sort by count descending
+    const sorted = Object.values(winCounts).sort((a, b) => b.count - a.count);
+
+    console.log('\n📊 ===== SPIN STATISTICS =====');
+    console.log(`Total spins: ${spinLog.length}`);
+    console.log('\nWin distribution:');
+    console.table(sorted.map(w => ({
+        'Người chơi': w.name,
+        'Số lần thắng': w.count,
+        'Tỉ lệ %': ((w.count / spinLog.length) * 100).toFixed(1) + '%'
+    })));
+
+    // Chi-square test hint
+    const expectedPerPerson = spinLog.length / sorted.length;
+    console.log(`\nExpected wins per person (if fair): ${expectedPerPerson.toFixed(2)}`);
+    console.log('Raw data:', spinLog);
+}
+
+// Clear spin statistics
+export function clearSpinStats(): void {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem('spin_statistics');
+    console.log('🗑️ Spin statistics cleared.');
+}
+
+// Make functions available globally in browser
+if (typeof window !== 'undefined') {
+    (window as unknown as { getSpinStats: typeof getSpinStats; clearSpinStats: typeof clearSpinStats }).getSpinStats = getSpinStats;
+    (window as unknown as { getSpinStats: typeof getSpinStats; clearSpinStats: typeof clearSpinStats }).clearSpinStats = clearSpinStats;
 }

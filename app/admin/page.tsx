@@ -35,11 +35,12 @@ export default function AdminPage() {
     const [currentTargetRotation, setCurrentTargetRotation] = useState<number | undefined>(undefined);
     const [currentExpectedWinnerId, setCurrentExpectedWinnerId] = useState<string | undefined>(undefined);
     const [showCountdown, setShowCountdown] = useState(false);
-    const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number; winnerId: string } | null>(null);
+    const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number; winnerId: string; testCycle: number; prizeRound: number } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [newParticipantName, setNewParticipantName] = useState('');
     const [isAddingParticipant, setIsAddingParticipant] = useState(false);
+    const [testCycle, setTestCycle] = useState(1);  // Track test cycle for logging
 
     // Custom dialog hook
     const { dialogState, showAlert, showConfirm, closeDialog } = useDialog();
@@ -159,7 +160,7 @@ export default function AdminPage() {
         let winnerId: string;
 
         try {
-            const result = generateTargetRotation(activeParticipants, allParticipants);
+            const result = generateTargetRotation(activeParticipants, allParticipants, { testCycle, prizeRound: currentRound });
             targetRotation = result.targetRotation;
             winnerId = result.winnerId;
         } catch (error) {
@@ -177,8 +178,9 @@ export default function AdminPage() {
             return;
         }
 
-        // Store pending spin data including winnerId for consistency
-        setPendingSpinData({ spinTrigger: newSpinTrigger, targetRotation, winnerId });
+        // Store pending spin data including winnerId and round info for logging
+        const prizeRound = currentRound;  // 1, 2, or 3
+        setPendingSpinData({ spinTrigger: newSpinTrigger, targetRotation, winnerId, testCycle, prizeRound });
 
         // Broadcast countdown event to guest pages
         broadcastGameEvent({
@@ -249,6 +251,7 @@ export default function AdminPage() {
                     setParticipants(updatedParticipants);
                     setCurrentRound(1);
                     setGameComplete(false);
+                    setTestCycle(prev => prev + 1);  // Increment test cycle for logging
                 }
             }
         );
