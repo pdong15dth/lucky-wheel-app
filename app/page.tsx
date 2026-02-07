@@ -1,8 +1,95 @@
-import Link from "next/link";
+'use client';
+
+import { useState } from 'react';
+import Image from "next/image";
+import { useRouter } from 'next/navigation';
+
+const ADMIN_PASSWORD = '2025';
 
 export default function Home() {
+  const router = useRouter();
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const handleAdminClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowPasswordDialog(true);
+    setPassword('');
+    setPasswordError('');
+  };
+
+  const handlePasswordSubmit = () => {
+    if (password === ADMIN_PASSWORD) {
+      // Save password to sessionStorage
+      sessionStorage.setItem('admin_authenticated', 'true');
+      router.push('/admin');
+    } else {
+      setPasswordError('Sai mật khẩu! Vui lòng thử lại.');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handlePasswordSubmit();
+    } else if (e.key === 'Escape') {
+      setShowPasswordDialog(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
+      {/* Password Dialog */}
+      {showPasswordDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="cyber-card max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-bold neon-text-cyan mb-4 flex items-center gap-2">
+              🔐 Xác thực Admin
+            </h3>
+
+            <p className="text-[var(--text-secondary)] mb-4">
+              Vui lòng nhập mật khẩu để truy cập trang quản trị.
+            </p>
+
+            <div className="mb-4">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError('');
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Nhập mật khẩu..."
+                className="w-full px-4 py-3 bg-[var(--cyber-bg-tertiary)] border border-[var(--text-muted)] rounded-lg text-white focus:border-[var(--neon-cyan)] focus:outline-none focus:ring-1 focus:ring-[var(--neon-cyan)]"
+                autoFocus
+              />
+              {passwordError && (
+                <p className="mt-2 text-sm text-[var(--neon-red)]">
+                  ❌ {passwordError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowPasswordDialog(false)}
+                className="cyber-button"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handlePasswordSubmit}
+                disabled={!password}
+                className="cyber-button primary disabled:opacity-50"
+              >
+                Đăng nhập
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Background decoration */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div
@@ -20,9 +107,16 @@ export default function Home() {
       </div>
 
       <div className="relative z-10 text-center max-w-2xl">
-        {/* Logo/Icon */}
+        {/* Tora Tech Logo */}
         <div className="mb-8">
-          <div className="inline-block text-8xl mb-4 animate-pulse-glow">🎡</div>
+          <Image
+            src="/tora-tech-logo.svg"
+            alt="Tora Tech Logo"
+            width={280}
+            height={100}
+            className="mx-auto mb-4"
+            priority
+          />
         </div>
 
         {/* Title */}
@@ -44,19 +138,22 @@ export default function Home() {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/admin" className="cyber-button primary text-lg px-8 py-4">
+          <button
+            onClick={handleAdminClick}
+            className="cyber-button primary text-lg px-8 py-4"
+          >
             <span className="flex items-center justify-center gap-2">
               <span>🎮</span>
               Trang Quản Trị
             </span>
-          </Link>
+          </button>
 
-          <Link href="/checkin" className="cyber-button text-lg px-8 py-4">
+          <a href="/checkin" className="cyber-button text-lg px-8 py-4">
             <span className="flex items-center justify-center gap-2">
               <span>✋</span>
               Điểm Danh
             </span>
-          </Link>
+          </a>
         </div>
 
         {/* Features */}
@@ -88,7 +185,7 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="mt-16 text-sm text-[var(--text-muted)]">
-          <p>Powered by Supabase & Next.js</p>
+          <p>© 2026 Tora Tech. All rights reserved.</p>
         </footer>
       </div>
     </div>

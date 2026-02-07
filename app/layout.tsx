@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vòng Quay May Mắn | Lucky Wheel",
-  description: "Ứng dụng vòng quay may mắn thời gian thực với giao diện Cyberpunk",
-  keywords: ["lucky wheel", "vòng quay", "may mắn", "quay thưởng"],
+  title: "Vòng Quay May Mắn | Tora Tech",
+  description: "Ứng dụng vòng quay may mắn thời gian thực - Tora Tech",
+  keywords: ["lucky wheel", "vòng quay", "may mắn", "quay thưởng", "tora tech"],
 };
 
 export default function RootLayout({

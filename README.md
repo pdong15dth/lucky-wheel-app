@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎰 Lucky Wheel App
 
-## Getting Started
+Ứng dụng vòng quay may mắn với giao diện Cyberpunk, đồng bộ realtime giữa Admin và Guest.
 
-First, run the development server:
+## ✨ Tính Năng
+
+- 🎡 Vòng quay với hiệu ứng Cyberpunk
+- 👥 Quản lý người tham gia
+- 🔄 Đồng bộ realtime (Supabase)
+- 📱 Responsive design
+
+## 🚀 Cài Đặt
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Mở [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📂 Cấu Trúc
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Đường dẫn | Mô tả |
+|-----------|-------|
+| `/admin` | Trang quản trị - quay số |
+| `/guest` | Trang xem - người tham gia |
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🎲 Thuật Toán Random - Tính Minh Bạch & Công Bằng
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Tổng Quan
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Lucky Wheel sử dụng thuật toán random dựa trên JavaScript `Math.random()` để đảm bảo mỗi người tham gia đều có **cơ hội bằng nhau** để chiến thắng.
 
-## Deploy on Vercel
+| Thông số | Giá trị |
+|----------|---------|
+| Phương pháp random | `Math.random()` (PRNG) |
+| Phân phối xác suất | **Đồng đều (Uniform Distribution)** |
+| Xác suất mỗi người | `1/n` (n = số người tham gia) |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Công Thức Tính Toán
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**1. Góc mỗi phân đoạn:**
+```
+segmentAngle = (2 × π) / n
+```
+
+**2. Chọn người thắng:**
+```javascript
+winnerIndex = Math.floor(Math.random() * n)  // Random từ 0 đến n-1
+```
+
+**3. Tính góc quay tổng:**
+```javascript
+fullRotations = 5 + Math.random() * 5  // 5-10 vòng quay
+targetRotation = fullRotations × 2π + winnerIndex × segmentAngle
+```
+
+### Bảng Xác Suất
+
+| Số người | Xác suất mỗi người |
+|----------|-------------------|
+| 4 | 25.00% |
+| 6 | 16.67% |
+| 8 | 12.50% |
+| 10 | 10.00% |
+| 12 | 8.33% |
+| 20 | 5.00% |
+
+### ✅ Cam Kết Công Bằng
+
+1. **Không thiên vị** - Thuật toán không ưu tiên bất kỳ vị trí nào
+2. **Phân phối đều** - Mỗi người có xác suất chiến thắng bằng nhau
+3. **Đồng bộ hóa** - Admin và Guest thấy cùng một kết quả quay
+4. **Không can thiệp** - Kết quả được xác định ngẫu nhiên
+
+### Mã Nguồn
+
+```typescript
+// components/LuckyWheel.tsx
+export function generateTargetRotation(participantsCount: number) {
+    const segmentAngle = (2 * Math.PI) / participantsCount;
+    const fullRotations = 5 + Math.random() * 5;
+    const winnerIndex = Math.floor(Math.random() * participantsCount);
+    const targetRotation = fullRotations * 2 * Math.PI + winnerIndex * segmentAngle;
+    return { targetRotation, winnerIndex };
+}
+```
+
+> ⚠️ **Lưu ý:** `Math.random()` sử dụng PRNG, phù hợp cho mini-game giải trí. Không nên dùng cho mục đích cờ bạc hoặc tài chính.

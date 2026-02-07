@@ -14,9 +14,24 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export interface Participant {
   id: string;
   name: string;
+  alias: string | null; // Auto-generated alias like "DongPH1" for duplicate first names
   status: 'active' | 'winner' | 'eliminated';
   prize_rank: number | null;
   created_at: string;
+}
+
+// Helper function to generate alias from full name: "Phạm Hoàng Đông" -> "DongPH"
+function generateAliasFromName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) return fullName;
+
+  // Last part is the first name (Vietnamese naming convention)
+  const firstName = parts[parts.length - 1];
+
+  // Get initials from other parts (family name + middle names)
+  const initials = parts.slice(0, -1).map(part => part.charAt(0).toUpperCase()).join('');
+
+  return firstName + initials;
 }
 
 // Fetch all participants
@@ -33,22 +48,47 @@ export async function getParticipants(): Promise<Participant[]> {
   return data || [];
 }
 
-// Add a new participant (returns error if name already exists)
-export async function addParticipant(name: string): Promise<{ success: true; data: Participant } | { success: false; error: 'duplicate' | 'unknown' }> {
-  // Check if name already exists (case-insensitive)
-  const { data: existing } = await supabase
-    .from('participants')
-    .select('id')
-    .ilike('name', name)
-    .limit(1);
+// Add a new participant with auto-generated alias
+// Returns success with data including alias info for display
+export async function addParticipant(name: string): Promise<{
+  success: true;
+  data: Participant;
+  aliasInfo: { alias: string; isDuplicate: boolean }
+} | {
+  success: false;
+  error: 'unknown'
+}> {
+  // Generate base alias
+  const baseAlias = generateAliasFromName(name);
 
-  if (existing && existing.length > 0) {
-    return { success: false, error: 'duplicate' };
+  // Check if this alias already exists, if so add a number suffix
+  const { data: existingAliases } = await supabase
+    .from('participants')
+    .select('alias')
+    .ilike('alias', `${baseAlias}%`);
+
+  let finalAlias = baseAlias;
+  let isDuplicate = false;
+
+  if (existingAliases && existingAliases.length > 0) {
+    isDuplicate = true;
+    // Find the highest number suffix
+    let maxNum = 0;
+    existingAliases.forEach(p => {
+      if (p.alias) {
+        const match = p.alias.match(new RegExp(`^${baseAlias}(\\d+)?$`, 'i'));
+        if (match) {
+          const num = match[1] ? parseInt(match[1]) : 1;
+          maxNum = Math.max(maxNum, num);
+        }
+      }
+    });
+    finalAlias = `${baseAlias}${maxNum + 1}`;
   }
 
   const { data, error } = await supabase
     .from('participants')
-    .insert([{ name, status: 'active' }])
+    .insert([{ name, alias: finalAlias, status: 'active' }])
     .select()
     .single();
 
@@ -56,7 +96,11 @@ export async function addParticipant(name: string): Promise<{ success: true; dat
     console.error('Error adding participant:', error);
     return { success: false, error: 'unknown' };
   }
-  return { success: true, data };
+  return {
+    success: true,
+    data,
+    aliasInfo: { alias: finalAlias, isDuplicate }
+  };
 }
 
 // Update participant as winner

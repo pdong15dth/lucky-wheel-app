@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import LuckyWheel, { generateTargetRotation } from '@/components/LuckyWheel';
 import ParticipantList from '@/components/ParticipantList';
 import PrizeDisplay from '@/components/PrizeDisplay';
@@ -19,6 +21,7 @@ import {
 } from '@/lib/supabase';
 
 export default function AdminPage() {
+    const router = useRouter();
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [isSpinning, setIsSpinning] = useState(false);
     const [spinTrigger, setSpinTrigger] = useState(0);
@@ -32,9 +35,20 @@ export default function AdminPage() {
     const [showCountdown, setShowCountdown] = useState(false);
     const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     // Custom dialog hook
     const { dialogState, showAlert, showConfirm, closeDialog } = useDialog();
+
+    // Check authentication on mount
+    useEffect(() => {
+        const authStatus = sessionStorage.getItem('admin_authenticated');
+        if (authStatus !== 'true') {
+            router.replace('/');
+            return;
+        }
+        setIsAuthenticated(true);
+    }, [router]);
 
     const winners = {
         prize1: participants.find(p => p.prize_rank === 1) || null,
@@ -46,6 +60,8 @@ export default function AdminPage() {
 
     // Load participants on mount
     useEffect(() => {
+        if (!isAuthenticated) return;
+
         const loadParticipants = async () => {
             setIsLoading(true);
             const data = await getParticipants();
@@ -69,10 +85,12 @@ export default function AdminPage() {
         if (typeof window !== 'undefined') {
             setCheckinUrl(`${window.location.origin}/checkin`);
         }
-    }, []);
+    }, [isAuthenticated]);
 
     // Subscribe to real-time updates with direct payload handling
     useEffect(() => {
+        if (!isAuthenticated) return;
+
         const unsubscribe = subscribeToParticipantsRealtime({
             onInsert: (newParticipant) => {
                 console.log('📥 Adding new participant to state:', newParticipant.name);
@@ -101,7 +119,7 @@ export default function AdminPage() {
         return () => {
             unsubscribe();
         };
-    }, []);
+    }, [isAuthenticated]);
 
 
     // Handle spin - now shows countdown first
@@ -232,7 +250,7 @@ export default function AdminPage() {
         );
     };
 
-    if (isLoading) {
+    if (!isAuthenticated || isLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
@@ -274,6 +292,14 @@ export default function AdminPage() {
 
             {/* Header */}
             <header className="text-center mb-8">
+                <Image
+                    src="/tora-tech-logo.svg"
+                    alt="Tora Tech Logo"
+                    width={200}
+                    height={70}
+                    className="mx-auto mb-4"
+                    priority
+                />
                 <h1
                     className="text-3xl md:text-5xl font-bold mb-2 neon-text-cyan glitch"
                     data-text="VÒNG QUAY MAY MẮN"
@@ -374,7 +400,7 @@ export default function AdminPage() {
 
             {/* Footer */}
             <footer className="mt-12 text-center text-[var(--text-muted)] text-sm">
-                <p>Made with ❤️ by DevDen</p>
+                <p>© 2026 Tora Tech. All rights reserved.</p>
             </footer>
         </div>
     );

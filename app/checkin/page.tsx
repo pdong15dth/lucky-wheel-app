@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { addParticipant, subscribeToGameEvents, getParticipants, updateParticipantName } from '@/lib/supabase';
+import Image from 'next/image';
+import { addParticipant, subscribeToGameEvents, getParticipants, updateParticipantName, subscribeToParticipantsRealtime } from '@/lib/supabase';
 
 const CHECKIN_STORAGE_KEY = 'lucky_wheel_checkin';
 
 interface CheckinData {
     participantId: string;
     name: string;
+    alias?: string;
+    isDuplicateAlias?: boolean;
     checkinTime: string;
 }
 
@@ -56,19 +59,45 @@ export default function CheckinPage() {
         checkExistingCheckin();
     }, []);
 
-    // Listen for lock events and redirect to guest page
+    // Listen for participant deletion - reset UI if current user is deleted
     useEffect(() => {
-        const unsubscribe = subscribeToGameEvents((event) => {
-            if (event.type === 'checkin_locked') {
-                console.log('🔒 Check-in locked, redirecting to guest page...');
-                router.push('/guest');
+        const unsubscribe = subscribeToParticipantsRealtime({
+            onDelete: (deletedParticipant) => {
+                // Check localStorage for current user's participant ID
+                const stored = localStorage.getItem(CHECKIN_STORAGE_KEY);
+                if (stored) {
+                    const checkinData: CheckinData = JSON.parse(stored);
+                    if (deletedParticipant.id === checkinData.participantId) {
+                        console.log('🗑️ Current user was deleted, resetting UI...');
+                        localStorage.removeItem(CHECKIN_STORAGE_KEY);
+                        setExistingCheckin(null);
+                        setName('');
+                        setStatus('idle');
+                        setIsEditing(false);
+                    }
+                }
             }
         });
 
         return () => {
             unsubscribe();
         };
-    }, [router]);
+    }, []);
+
+    // Listen for lock events and redirect to guest page
+    useEffect(() => {
+        const unsubscribe = subscribeToGameEvents((event) => {
+            if (event.type === 'checkin_locked') {
+                console.log('🔒 Check-in locked, redirecting to guest page...');
+                // Use window.location to force full page load, ensuring subscriptions are fresh
+                window.location.href = '/guest';
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -101,19 +130,18 @@ export default function CheckinPage() {
             const result = await addParticipant(trimmedName);
 
             if (result.success) {
-                // Save to localStorage
+                // Save to localStorage with alias info
                 const checkinData: CheckinData = {
                     participantId: result.data.id,
                     name: result.data.name,
+                    alias: result.aliasInfo.alias,
+                    isDuplicateAlias: result.aliasInfo.isDuplicate,
                     checkinTime: new Date().toISOString()
                 };
                 localStorage.setItem(CHECKIN_STORAGE_KEY, JSON.stringify(checkinData));
 
                 setExistingCheckin(checkinData);
                 setStatus('registered');
-            } else if (result.error === 'duplicate') {
-                setStatus('error');
-                setErrorMessage(`Tên "${trimmedName}" đã được sử dụng. Vui lòng nhập tên khác!`);
             } else {
                 setStatus('error');
                 setErrorMessage('Có lỗi xảy ra. Vui lòng thử lại!');
@@ -191,7 +219,14 @@ export default function CheckinPage() {
                 <div className="cyber-card">
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="inline-block text-6xl mb-4 animate-pulse-glow">🎡</div>
+                        <Image
+                            src="/tora-tech-logo.svg"
+                            alt="Tora Tech Logo"
+                            width={180}
+                            height={65}
+                            className="mx-auto mb-4"
+                            priority
+                        />
                         <h1
                             className="text-2xl md:text-3xl font-bold neon-text-cyan glitch"
                             data-text="ĐIỂM DANH"
@@ -205,16 +240,29 @@ export default function CheckinPage() {
 
                     {/* Already Registered State */}
                     {status === 'registered' && existingCheckin && !isEditing ? (
-                        <div className="text-center py-8">
-                            <div className="text-6xl mb-4">✅</div>
-                            <h2 className="text-xl font-bold neon-text-green mb-2">
+                        <div className="text-center py-6">
+                            <div className="text-5xl mb-3">✅</div>
+                            <h2 className="text-xl font-bold neon-text-green mb-3">
                                 Đã điểm danh!
                             </h2>
                             <div className="mb-4 p-4 rounded-lg bg-[var(--cyber-bg-tertiary)] border border-[var(--neon-green)]">
                                 <p className="text-sm text-[var(--text-muted)] mb-1">Tên của bạn:</p>
                                 <p className="text-xl font-bold text-[var(--neon-cyan)]">{existingCheckin.name}</p>
+
+                                {/* Show alias info */}
+                                {existingCheckin.alias && (
+                                    <div className="mt-3 pt-3 border-t border-[var(--text-muted)] border-opacity-30">
+                                        <p className="text-xs text-[var(--text-muted)] mb-1">Tên hiển thị trên vòng quay:</p>
+                                        <p className="text-lg font-bold text-[var(--neon-magenta)]">{existingCheckin.alias}</p>
+                                        {existingCheckin.isDuplicateAlias && (
+                                            <p className="text-xs text-[var(--neon-yellow)] mt-2">
+                                                ℹ️ Có người cùng tên nên đã thêm alias để phân biệt
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            <p className="text-[var(--text-secondary)] mb-6 text-sm">
+                            <p className="text-[var(--text-secondary)] mb-5 text-sm">
                                 Bạn đã đăng ký tham gia vòng quay. Chờ kết quả nhé!
                             </p>
                             <div className="flex gap-3 justify-center">
@@ -333,7 +381,7 @@ export default function CheckinPage() {
                     {/* Footer */}
                     <div className="mt-8 pt-6 border-t border-[var(--text-muted)] border-opacity-30 text-center">
                         <p className="text-sm text-[var(--text-muted)]">
-                            Vòng quay may mắn • 3 giải thưởng hấp dẫn
+                            © 2026 Tora Tech. All rights reserved.
                         </p>
                     </div>
                 </div>

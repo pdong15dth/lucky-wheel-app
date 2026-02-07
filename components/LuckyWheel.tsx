@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { Participant } from '@/lib/supabase';
 
 interface LuckyWheelProps {
@@ -23,6 +23,35 @@ const SEGMENT_COLORS = [
     { bg: '#1e0a0a', border: '#ff0040' },  // Deep red
 ];
 
+// Helper to extract first name (last part in Vietnamese naming)
+function getFirstName(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/);
+    return parts[parts.length - 1] || fullName;
+}
+
+// Helper to get initials from family + middle names
+function getInitials(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length <= 1) return '';
+    return parts.slice(0, -1).map(p => p.charAt(0).toUpperCase()).join('');
+}
+
+// Generate smart display names for wheel - using alias if available
+function generateDisplayNames(participants: Participant[]): Map<string, string> {
+    const displayNames = new Map<string, string>();
+
+    participants.forEach(p => {
+        // Use alias if available, otherwise just the first name
+        if (p.alias) {
+            displayNames.set(p.id, p.alias);
+        } else {
+            displayNames.set(p.id, getFirstName(p.name));
+        }
+    });
+
+    return displayNames;
+}
+
 export default function LuckyWheel({
     participants,
     isSpinning,
@@ -37,6 +66,9 @@ export default function LuckyWheel({
 
     const activeParticipants = participants.filter(p => p.status === 'active');
     const segmentAngle = activeParticipants.length > 0 ? (2 * Math.PI) / activeParticipants.length : 0;
+
+    // Generate smart display names for the wheel
+    const displayNames = useMemo(() => generateDisplayNames(activeParticipants), [activeParticipants]);
 
     // Draw the wheel
     const drawWheel = useCallback((rotation: number) => {
@@ -123,10 +155,10 @@ export default function LuckyWheel({
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
-            // Truncate name if too long
-            let displayName = participant.name;
+            // Use smart display name (alias or first name)
+            let displayName = displayNames.get(participant.id) || participant.name;
             if (displayName.length > 12) {
-                displayName = displayName.substring(0, 10) + '...';
+                displayName = displayName.substring(0, 10) + '..';
             }
 
             // Position text
@@ -164,7 +196,7 @@ export default function LuckyWheel({
         ctx.textBaseline = 'middle';
         ctx.fillText('SPIN', centerX, centerY);
 
-    }, [activeParticipants, segmentAngle]);
+    }, [activeParticipants, segmentAngle, displayNames]);
 
     // Spin animation with easing - uses targetRotation if provided (for sync)
     const spin = useCallback((providedTargetRotation?: number) => {

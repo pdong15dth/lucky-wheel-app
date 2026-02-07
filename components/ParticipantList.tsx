@@ -9,8 +9,6 @@ interface ParticipantListProps {
     onParticipantDeleted?: () => void;
 }
 
-const DELETE_PASSWORD = '2025';
-
 export default function ParticipantList({
     participants,
     isAdmin = false,
@@ -19,9 +17,8 @@ export default function ParticipantList({
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
-    const [password, setPassword] = useState('');
-    const [passwordError, setPasswordError] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
 
     const activeCount = participants.filter(p => p.status === 'active').length;
     const winnerCount = participants.filter(p => p.status === 'winner').length;
@@ -31,25 +28,18 @@ export default function ParticipantList({
             return;
         }
         setSelectedParticipant(participant);
-        setPassword('');
-        setPasswordError('');
+        setDeleteError('');
         setShowDeleteDialog(true);
     };
 
     const closeDeleteDialog = () => {
         setShowDeleteDialog(false);
         setSelectedParticipant(null);
-        setPassword('');
-        setPasswordError('');
+        setDeleteError('');
     };
 
     const handleDelete = useCallback(async () => {
         if (!selectedParticipant) return;
-
-        if (password !== DELETE_PASSWORD) {
-            setPasswordError('Sai mật khẩu!');
-            return;
-        }
 
         setIsDeleting(true);
         setDeletingId(selectedParticipant.id);
@@ -60,20 +50,20 @@ export default function ParticipantList({
                 closeDeleteDialog();
                 onParticipantDeleted?.();
             } else {
-                setPasswordError('Không thể xóa. Vui lòng thử lại!');
+                setDeleteError('Không thể xóa. Vui lòng thử lại!');
             }
         } catch (error) {
             console.error('Delete error:', error);
-            setPasswordError('Có lỗi xảy ra!');
+            setDeleteError('Có lỗi xảy ra!');
         } finally {
             setIsDeleting(false);
             setDeletingId(null);
         }
-    }, [selectedParticipant, password, onParticipantDeleted]);
+    }, [selectedParticipant, onParticipantDeleted]);
 
     return (
         <>
-            {/* Delete Confirmation Dialog with Password */}
+            {/* Delete Confirmation Dialog */}
             {showDeleteDialog && selectedParticipant && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
                     <div className="cyber-card max-w-md w-full mx-4 p-6">
@@ -81,36 +71,15 @@ export default function ParticipantList({
                             🗑️ Xác nhận xóa
                         </h3>
 
-                        <p className="text-[var(--text-secondary)] mb-4">
-                            Bạn có chắc muốn xóa <strong className="text-white">"{selectedParticipant.name}"</strong>?
+                        <p className="text-[var(--text-secondary)] mb-6">
+                            Bạn có chắc muốn xóa <strong className="text-white">"{selectedParticipant.name}"</strong> khỏi danh sách?
                         </p>
 
-                        <div className="mb-4">
-                            <label className="block text-sm text-[var(--text-secondary)] mb-2">
-                                Nhập mật khẩu để xác nhận:
-                            </label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => {
-                                    setPassword(e.target.value);
-                                    setPasswordError('');
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        handleDelete();
-                                    }
-                                }}
-                                placeholder="Nhập mật khẩu..."
-                                className="w-full px-4 py-3 bg-[var(--cyber-bg-tertiary)] border border-[var(--text-muted)] rounded-lg text-white focus:border-[var(--neon-cyan)] focus:outline-none focus:ring-1 focus:ring-[var(--neon-cyan)]"
-                                autoFocus
-                            />
-                            {passwordError && (
-                                <p className="mt-2 text-sm text-[var(--neon-red)]">
-                                    ❌ {passwordError}
-                                </p>
-                            )}
-                        </div>
+                        {deleteError && (
+                            <p className="mb-4 text-sm text-[var(--neon-red)]">
+                                ❌ {deleteError}
+                            </p>
+                        )}
 
                         <div className="flex gap-3 justify-end">
                             <button
@@ -122,7 +91,7 @@ export default function ParticipantList({
                             </button>
                             <button
                                 onClick={handleDelete}
-                                disabled={isDeleting || !password}
+                                disabled={isDeleting}
                                 className="cyber-button bg-[var(--neon-red)] hover:bg-[var(--neon-red)]/80 disabled:opacity-50"
                             >
                                 {isDeleting ? 'Đang xóa...' : 'Xóa'}
@@ -154,7 +123,14 @@ export default function ParticipantList({
                                 className={`participant-item ${participant.status === 'winner' ? 'winner' : ''}`}
                             >
                                 <span className="status-dot"></span>
-                                <span className="flex-1">{participant.name}</span>
+                                <span className="flex-1 flex items-center gap-2">
+                                    <span>{participant.name}</span>
+                                    {participant.alias && (
+                                        <span className="text-xs text-[var(--neon-magenta)] opacity-70">
+                                            ({participant.alias})
+                                        </span>
+                                    )}
+                                </span>
                                 {participant.status === 'winner' && participant.prize_rank && (
                                     <span className="text-xs px-2 py-1 bg-[var(--neon-yellow)] text-black font-bold rounded">
                                         Giải {participant.prize_rank}
@@ -186,3 +162,4 @@ export default function ParticipantList({
         </>
     );
 }
+

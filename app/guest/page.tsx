@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import LuckyWheel from '@/components/LuckyWheel';
 import PrizeDisplay from '@/components/PrizeDisplay';
 import ParticipantList from '@/components/ParticipantList';
@@ -175,6 +176,14 @@ export default function GuestPage() {
 
             {/* Header */}
             <header className="text-center mb-8">
+                <Image
+                    src="/tora-tech-logo.svg"
+                    alt="Tora Tech Logo"
+                    width={200}
+                    height={70}
+                    className="mx-auto mb-4"
+                    priority
+                />
                 <h1
                     className="text-3xl md:text-5xl font-bold mb-2 neon-text-cyan glitch"
                     data-text="VÒNG QUAY MAY MẮN"
@@ -226,7 +235,7 @@ export default function GuestPage() {
 
             {/* Footer */}
             <footer className="mt-12 text-center text-[var(--text-muted)] text-sm">
-                <p>Vòng quay may mắn • Đang phát trực tiếp</p>
+                <p>© 2026 Tora Tech. All rights reserved.</p>
             </footer>
         </div>
     );
