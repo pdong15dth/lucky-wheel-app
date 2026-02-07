@@ -20,10 +20,11 @@ export default function GuestPage() {
     const [isSpinning, setIsSpinning] = useState(false);
     const [spinTrigger, setSpinTrigger] = useState(0);
     const [targetRotation, setTargetRotation] = useState<number | undefined>(undefined);
+    const [expectedWinnerId, setExpectedWinnerId] = useState<string | undefined>(undefined);
     const [showCelebration, setShowCelebration] = useState(false);
     const [celebrationData, setCelebrationData] = useState<{ name: string; prizeRank: 1 | 2 | 3 } | null>(null);
     const [showCountdown, setShowCountdown] = useState(false);
-    const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number } | null>(null);
+    const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number; winnerId?: string } | null>(null);
 
     const winners = {
         prize1: participants.find(p => p.prize_rank === 1) || null,
@@ -89,10 +90,11 @@ export default function GuestPage() {
                 // Auto-close celebration overlay if open
                 setShowCelebration(false);
 
-                // Store pending spin data
+                // Store pending spin data including winnerId for sync consistency
                 setPendingSpinData({
                     spinTrigger: event.data.spinTrigger,
-                    targetRotation: event.data.targetRotation
+                    targetRotation: event.data.targetRotation,
+                    winnerId: event.data.winnerId
                 });
 
                 // Show countdown
@@ -132,6 +134,7 @@ export default function GuestPage() {
             setIsSpinning(true);
             setSpinTrigger(pendingSpinData.spinTrigger);
             setTargetRotation(pendingSpinData.targetRotation);
+            setExpectedWinnerId(pendingSpinData.winnerId);  // Set expected winner for sync
             setPendingSpinData(null);
         }
     }, [pendingSpinData]);
@@ -209,6 +212,7 @@ export default function GuestPage() {
                             onSpinComplete={handleSpinComplete}
                             spinTrigger={spinTrigger}
                             targetRotation={targetRotation}
+                            expectedWinnerId={expectedWinnerId}
                         />
                     </div>
 

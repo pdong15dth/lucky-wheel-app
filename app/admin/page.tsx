@@ -34,7 +34,7 @@ export default function AdminPage() {
     const [isCheckinLocked, setIsCheckinLocked] = useState(false);
     const [currentTargetRotation, setCurrentTargetRotation] = useState<number | undefined>(undefined);
     const [showCountdown, setShowCountdown] = useState(false);
-    const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number } | null>(null);
+    const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number; winnerId: string } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [newParticipantName, setNewParticipantName] = useState('');
@@ -59,7 +59,13 @@ export default function AdminPage() {
         prize3: participants.find(p => p.prize_rank === 3) || null,
     };
 
-    const activeParticipants = participants.filter(p => p.status === 'active');
+    // IMPORTANT: Sort by ID to ensure consistent order with LuckyWheel component
+    const activeParticipants = participants
+        .filter(p => p.status === 'active')
+        .sort((a, b) => a.id.localeCompare(b.id));
+    const allParticipants = participants
+        .filter(p => p.status === 'active' || p.status === 'winner')
+        .sort((a, b) => a.id.localeCompare(b.id));
 
     // Load participants on mount
     useEffect(() => {
@@ -147,15 +153,15 @@ export default function AdminPage() {
 
         // Generate target rotation for sync
         const newSpinTrigger = spinTrigger + 1;
-        const { targetRotation } = generateTargetRotation(activeParticipants.length);
+        const { targetRotation, winnerId } = generateTargetRotation(activeParticipants, allParticipants);
 
-        // Store pending spin data
-        setPendingSpinData({ spinTrigger: newSpinTrigger, targetRotation });
+        // Store pending spin data including winnerId for consistency
+        setPendingSpinData({ spinTrigger: newSpinTrigger, targetRotation, winnerId });
 
         // Broadcast countdown event to guest pages
         broadcastGameEvent({
             type: 'countdown_start',
-            data: { countdownSeconds: 5, spinTrigger: newSpinTrigger, targetRotation }
+            data: { countdownSeconds: 5, spinTrigger: newSpinTrigger, targetRotation, winnerId }
         });
 
         // Show countdown

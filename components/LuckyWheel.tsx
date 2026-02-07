@@ -9,6 +9,7 @@ interface LuckyWheelProps {
     onSpinComplete: (winner: Participant) => void;
     spinTrigger: number;
     targetRotation?: number; // If provided, use this exact rotation (for sync)
+    expectedWinnerId?: string; // If provided, use this winner (for sync consistency)
 }
 
 // Cyberpunk color palette for wheel segments
@@ -22,6 +23,57 @@ const SEGMENT_COLORS = [
     { bg: '#0a1a1e', border: '#00d4ff' },  // Deep blue
     { bg: '#1e0a0a', border: '#ff0040' },  // Deep red
 ];
+
+// === POINTER AND SEGMENT CALCULATION ===
+// Pointer is fixed at TOP of the wheel = -π/2 radians (or 270° in canvas coordinates)
+// Canvas: 0 = right (3 o'clock), angles increase CLOCKWISE
+//
+// When drawing, segment i is drawn from:
+//   startAngle = rotation + i * segmentAngle
+//   endAngle = rotation + (i+1) * segmentAngle
+//
+// To find which segment is under the pointer at angle -π/2:
+//   We need: startAngle <= -π/2 < endAngle  (modulo 2π)
+//   Which means: rotation + i*segmentAngle <= -π/2 < rotation + (i+1)*segmentAngle
+
+const POINTER_ANGLE = -Math.PI / 2; // Top of wheel = -90° = -π/2
+
+// Find which segment index is under the pointer, given the current wheel rotation
+function getSegmentAtPointer(rotation: number, segmentCount: number): number {
+    if (segmentCount === 0) return 0;
+    const segmentAngle = (2 * Math.PI) / segmentCount;
+
+    // Segment i starts at: rotation + i * segmentAngle
+    // We need: rotation + i * segmentAngle <= POINTER_ANGLE (mod 2π)
+    // So: i * segmentAngle <= POINTER_ANGLE - rotation (mod 2π)
+    // i = floor((POINTER_ANGLE - rotation) / segmentAngle) mod segmentCount
+
+    let angle = POINTER_ANGLE - rotation;
+    // Normalize to [0, 2π)
+    angle = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+    return Math.floor(angle / segmentAngle) % segmentCount;
+}
+
+// Calculate the rotation needed so that segment at segmentIndex is under the pointer
+// The segment CENTER should align with the pointer
+function getRotationForSegment(segmentIndex: number, segmentCount: number, fullRotations: number): number {
+    const segmentAngle = (2 * Math.PI) / segmentCount;
+
+    // Segment center is at: rotation + segmentIndex * segmentAngle + segmentAngle/2
+    // We want segment center = POINTER_ANGLE
+    // rotation + (segmentIndex + 0.5) * segmentAngle = POINTER_ANGLE
+    // rotation = POINTER_ANGLE - (segmentIndex + 0.5) * segmentAngle
+
+    const segmentCenterOffset = (segmentIndex + 0.5) * segmentAngle;
+    const neededRotation = POINTER_ANGLE - segmentCenterOffset;
+
+    // Add full rotations to make the wheel spin multiple times
+    // Normalize neededRotation to [0, 2π) first
+    const normalizedRotation = ((neededRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+    return fullRotations * 2 * Math.PI + normalizedRotation;
+}
 
 // Helper to extract first name (last part in Vietnamese naming)
 function getFirstName(fullName: string): string {
@@ -57,18 +109,28 @@ export default function LuckyWheel({
     isSpinning,
     onSpinComplete,
     spinTrigger,
-    targetRotation
+    targetRotation,
+    expectedWinnerId
 }: LuckyWheelProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [currentRotation, setCurrentRotation] = useState(0);
     const animationRef = useRef<number | null>(null);
     const lastSpinTrigger = useRef(0);
 
-    const activeParticipants = participants.filter(p => p.status === 'active');
-    const segmentAngle = activeParticipants.length > 0 ? (2 * Math.PI) / activeParticipants.length : 0;
+    // All participants (for display on wheel) - SORTED BY ID for consistent order across all clients
+    const allParticipants = participants
+        .filter(p => p.status === 'active' || p.status === 'winner')
+        .sort((a, b) => a.id.localeCompare(b.id));
+    // Only active participants (for spinning logic) - also sorted
+    const activeParticipants = participants
+        .filter(p => p.status === 'active')
+        .sort((a, b) => a.id.localeCompare(b.id));
+
+    // Segment angle based on ALL participants (to keep wheel stable)
+    const segmentAngle = allParticipants.length > 0 ? (2 * Math.PI) / allParticipants.length : 0;
 
     // Generate smart display names for the wheel
-    const displayNames = useMemo(() => generateDisplayNames(activeParticipants), [activeParticipants]);
+    const displayNames = useMemo(() => generateDisplayNames(allParticipants), [allParticipants]);
 
     // Draw the wheel
     const drawWheel = useCallback((rotation: number) => {
@@ -102,7 +164,7 @@ export default function LuckyWheel({
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        if (activeParticipants.length === 0) {
+        if (allParticipants.length === 0) {
             // Draw empty state
             ctx.fillStyle = '#12121a';
             ctx.beginPath();
@@ -117,11 +179,12 @@ export default function LuckyWheel({
             return;
         }
 
-        // Draw segments
-        activeParticipants.forEach((participant, index) => {
+        // Draw segments - show ALL participants (active + winners)
+        allParticipants.forEach((participant, index) => {
             const startAngle = rotation + index * segmentAngle;
             const endAngle = startAngle + segmentAngle;
             const colorSet = SEGMENT_COLORS[index % SEGMENT_COLORS.length];
+            const isWinner = participant.status === 'winner';
 
             // Draw segment
             ctx.beginPath();
@@ -129,18 +192,24 @@ export default function LuckyWheel({
             ctx.arc(centerX, centerY, radius, startAngle, endAngle);
             ctx.closePath();
 
-            // Gradient fill
+            // Gradient fill - dimmed for winners
             const gradient = ctx.createRadialGradient(
                 centerX, centerY, 0,
                 centerX, centerY, radius
             );
-            gradient.addColorStop(0, colorSet.bg);
-            gradient.addColorStop(1, colorSet.border + '40');
+            if (isWinner) {
+                // Winner segments are darker/grayed out
+                gradient.addColorStop(0, '#1a1a1a');
+                gradient.addColorStop(1, '#2a2a2a');
+            } else {
+                gradient.addColorStop(0, colorSet.bg);
+                gradient.addColorStop(1, colorSet.border + '40');
+            }
             ctx.fillStyle = gradient;
             ctx.fill();
 
-            // Segment border
-            ctx.strokeStyle = colorSet.border;
+            // Segment border - dimmed for winners
+            ctx.strokeStyle = isWinner ? '#444444' : colorSet.border;
             ctx.lineWidth = 2;
             ctx.stroke();
 
@@ -149,8 +218,8 @@ export default function LuckyWheel({
             ctx.translate(centerX, centerY);
             ctx.rotate(startAngle + segmentAngle / 2);
 
-            // Text styling
-            ctx.fillStyle = '#ffffff';
+            // Text styling - dimmed for winners
+            ctx.fillStyle = isWinner ? '#666666' : '#ffffff';
             ctx.font = 'bold 12px Orbitron, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -159,6 +228,12 @@ export default function LuckyWheel({
             let displayName = displayNames.get(participant.id) || participant.name;
             if (displayName.length > 12) {
                 displayName = displayName.substring(0, 10) + '..';
+            }
+
+            // Add trophy emoji for winners
+            if (isWinner && participant.prize_rank) {
+                const trophy = participant.prize_rank === 1 ? '🥇' : participant.prize_rank === 2 ? '🥈' : '🥉';
+                displayName = `${trophy} ${displayName}`;
             }
 
             // Position text
@@ -196,32 +271,83 @@ export default function LuckyWheel({
         ctx.textBaseline = 'middle';
         ctx.fillText('SPIN', centerX, centerY);
 
-    }, [activeParticipants, segmentAngle, displayNames]);
+    }, [allParticipants, segmentAngle, displayNames]);
 
     // Spin animation with easing - uses targetRotation if provided (for sync)
+    // IMPORTANT: We spin to land on an ACTIVE participant, but the wheel shows ALL participants
     const spin = useCallback((providedTargetRotation?: number) => {
         if (activeParticipants.length < 2) return;
 
         // Use provided target or generate random one
-        let finalTargetAngle: number;
-        let targetSegmentIndex: number;
+        let deltaRotation: number; // How much to rotate FROM current position
+        let winnerParticipant: Participant;
 
         if (providedTargetRotation !== undefined) {
-            // Use exact rotation for sync
-            finalTargetAngle = providedTargetRotation;
-            // Calculate which segment this lands on
-            const fullRotations = Math.floor(providedTargetRotation / (2 * Math.PI));
-            const remainder = providedTargetRotation - (fullRotations * 2 * Math.PI);
-            targetSegmentIndex = Math.floor(remainder / segmentAngle) % activeParticipants.length;
+            // providedTargetRotation is the DELTA rotation (how much to spin)
+            deltaRotation = providedTargetRotation;
+
+            // If expectedWinnerId is provided, use it directly for consistency
+            // This ensures admin and guest always agree on the winner
+            if (expectedWinnerId) {
+                const expectedWinner = allParticipants.find(p => p.id === expectedWinnerId);
+                if (expectedWinner) {
+                    winnerParticipant = expectedWinner;
+                    console.log('🎯 Spin with expected winner (synced):', {
+                        expectedWinnerId,
+                        winner: winnerParticipant?.alias || winnerParticipant?.name
+                    });
+                } else {
+                    // Fallback: calculate from rotation if winner not found
+                    // Since wheel resets to 0, finalRotation = 0 + deltaRotation = deltaRotation
+                    const finalRotation = deltaRotation;
+                    const targetSegmentIndex = getSegmentAtPointer(finalRotation, allParticipants.length);
+                    winnerParticipant = allParticipants[targetSegmentIndex];
+                    console.log('🎯 Spin fallback (expected winner not found):', { expectedWinnerId });
+                }
+            } else {
+                // No expectedWinnerId, calculate from rotation
+                // Since wheel resets to 0, finalRotation = deltaRotation
+                const finalRotation = deltaRotation;
+                const targetSegmentIndex = getSegmentAtPointer(finalRotation, allParticipants.length);
+                winnerParticipant = allParticipants[targetSegmentIndex];
+                console.log('🎯 Spin with provided rotation (no expected winner):', {
+                    deltaRotation: deltaRotation * 180 / Math.PI,
+                    finalRotation: finalRotation * 180 / Math.PI,
+                    targetSegmentIndex,
+                    winner: winnerParticipant?.alias || winnerParticipant?.name
+                });
+            }
         } else {
-            // Random number of full rotations (5-10) plus random final position
+            // Pick a random ACTIVE participant
+            const activeWinnerIndex = Math.floor(Math.random() * activeParticipants.length);
+            winnerParticipant = activeParticipants[activeWinnerIndex];
+            // Find their position in allParticipants array
+            const allParticipantsIndex = allParticipants.findIndex(p => p.id === winnerParticipant.id);
+            // Calculate rotation to land on that segment
             const fullRotations = 5 + Math.random() * 5;
-            targetSegmentIndex = Math.floor(Math.random() * activeParticipants.length);
-            finalTargetAngle = fullRotations * 2 * Math.PI + targetSegmentIndex * segmentAngle;
+            // getRotationForSegment returns the ABSOLUTE rotation needed
+            // We need DELTA from current position
+            const targetAbsoluteRotation = getRotationForSegment(allParticipantsIndex, allParticipants.length, fullRotations);
+            deltaRotation = targetAbsoluteRotation - currentRotation;
+            // Make sure deltaRotation is positive (spin forward)
+            if (deltaRotation < 0) {
+                deltaRotation += 2 * Math.PI * Math.ceil(-deltaRotation / (2 * Math.PI));
+            }
+            console.log('🎯 Random spin:', {
+                currentRotation: currentRotation * 180 / Math.PI,
+                targetAbsoluteRotation: targetAbsoluteRotation * 180 / Math.PI,
+                deltaRotation: deltaRotation * 180 / Math.PI,
+                allParticipantsIndex,
+                winner: winnerParticipant?.alias || winnerParticipant?.name
+            });
         }
 
-        const startRotation = currentRotation;
-        const totalRotation = finalTargetAngle;
+        // IMPORTANT: Always start from rotation 0 for perfect sync across all clients
+        // This ensures admin and guest wheels are always in sync
+        const startRotation = 0;
+        setCurrentRotation(0);  // Reset to 0 immediately
+
+        const totalRotation = deltaRotation;
         const duration = 5000; // 5 seconds
         const startTime = performance.now();
 
@@ -239,19 +365,18 @@ export default function LuckyWheel({
             if (progress < 1) {
                 animationRef.current = requestAnimationFrame(animate);
             } else {
-                // Animation complete - determine winner
-                const winner = activeParticipants[targetSegmentIndex];
-                if (winner) {
-                    onSpinComplete(winner);
+                // Animation complete - return the winner
+                if (winnerParticipant) {
+                    onSpinComplete(winnerParticipant);
                 }
             }
         };
 
         animationRef.current = requestAnimationFrame(animate);
 
-        // Return the target angle for broadcasting
-        return finalTargetAngle;
-    }, [activeParticipants, currentRotation, segmentAngle, onSpinComplete]);
+        // Return the delta rotation for broadcasting
+        return deltaRotation;
+    }, [activeParticipants, allParticipants, currentRotation, segmentAngle, onSpinComplete, expectedWinnerId]);
 
     // Trigger spin when spinTrigger changes
     useEffect(() => {
@@ -301,10 +426,38 @@ export default function LuckyWheel({
 }
 
 // Helper function to generate target rotation (to be called by admin)
-export function generateTargetRotation(participantsCount: number): { targetRotation: number; winnerIndex: number } {
-    const segmentAngle = (2 * Math.PI) / participantsCount;
-    const fullRotations = 5 + Math.random() * 5;
-    const winnerIndex = Math.floor(Math.random() * participantsCount);
-    const targetRotation = fullRotations * 2 * Math.PI + winnerIndex * segmentAngle;
-    return { targetRotation, winnerIndex };
+// This returns the TOTAL rotation - how much the wheel should spin FROM 0
+// The wheel always resets to 0 before spinning for perfect sync
+// activeParticipants: list of active participants (for random selection)
+// allParticipants: list of all participants on wheel (for angle calculation)
+export function generateTargetRotation(
+    activeParticipants: Participant[],
+    allParticipants: Participant[]
+): { targetRotation: number; winnerIndex: number; winnerId: string } {
+    const fullRotations = 5 + Math.random() * 5; // 5-10 full rotations
+
+    // Random pick from ACTIVE participants
+    const activeWinnerIndex = Math.floor(Math.random() * activeParticipants.length);
+    const winner = activeParticipants[activeWinnerIndex];
+
+    // Find winner's position in allParticipants array
+    const allParticipantsIndex = allParticipants.findIndex(p => p.id === winner.id);
+
+    // Calculate the rotation needed to land on this segment
+    // getRotationForSegment calculates: POINTER_ANGLE - (segmentIndex + 0.5) * segmentAngle + fullRotations * 2π
+    // This is the ABSOLUTE rotation from 0 that lands the segment center under the pointer
+    const targetRotation = getRotationForSegment(allParticipantsIndex, allParticipants.length, fullRotations);
+
+    console.log('🎲 generateTargetRotation:', {
+        winner: winner.alias || winner.name,
+        allParticipantsIndex,
+        totalParticipants: allParticipants.length,
+        targetRotationDegrees: targetRotation * 180 / Math.PI
+    });
+
+    return {
+        targetRotation,
+        winnerIndex: allParticipantsIndex,
+        winnerId: winner.id
+    };
 }

@@ -281,6 +281,7 @@ export interface GameEvent {
   type: 'checkin_locked' | 'checkin_unlocked' | 'game_reset' | 'winner_announced' | 'wheel_spinning' | 'countdown_start';
   data?: {
     winnerName?: string;
+    winnerId?: string;  // ID of the winner for sync consistency
     prizeRank?: number;
     spinTrigger?: number;
     targetRotation?: number;
