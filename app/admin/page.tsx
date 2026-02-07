@@ -124,6 +124,11 @@ export default function AdminPage() {
 
     // Handle spin - now shows countdown first
     const handleSpin = () => {
+        if (!isCheckinLocked) {
+            showAlert('Chưa khóa Check-in', 'Vui lòng khóa Check-in trước khi quay để đảm bảo công bằng!');
+            return;
+        }
+
         if (activeParticipants.length < 2) {
             showAlert('Chưa đủ người', 'Cần ít nhất 2 người tham gia để quay!');
             return;
@@ -331,7 +336,7 @@ export default function AdminPage() {
                     <div className="flex flex-wrap gap-4 justify-center">
                         <button
                             onClick={handleSpin}
-                            disabled={isSpinning || activeParticipants.length < 2 || gameComplete}
+                            disabled={isSpinning || activeParticipants.length < 2 || gameComplete || !isCheckinLocked}
                             className="cyber-button primary text-lg px-8 py-4"
                         >
                             {isSpinning ? (
@@ -341,6 +346,8 @@ export default function AdminPage() {
                                 </span>
                             ) : gameComplete ? (
                                 'Đã hoàn thành!'
+                            ) : !isCheckinLocked ? (
+                                '🔒 Khóa Check-in để quay'
                             ) : (
                                 `🎯 QUAY GIẢI ${4 - currentRound}`
                             )}
@@ -371,7 +378,12 @@ export default function AdminPage() {
                         </button>
                     </div>
 
-                    {activeParticipants.length < 2 && !gameComplete && (
+                    {!isCheckinLocked && !gameComplete && (
+                        <p className="mt-4 text-[var(--neon-yellow)] text-sm">
+                            🔓 Hãy khóa Check-in trước khi quay để đảm bảo công bằng
+                        </p>
+                    )}
+                    {isCheckinLocked && activeParticipants.length < 2 && !gameComplete && (
                         <p className="mt-4 text-[var(--neon-yellow)] text-sm">
                             ⚠️ Cần thêm người tham gia để bắt đầu quay
                         </p>
