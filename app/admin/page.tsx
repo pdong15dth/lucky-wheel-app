@@ -33,6 +33,7 @@ export default function AdminPage() {
     const [celebrationData, setCelebrationData] = useState<{ name: string; prizeRank: 1 | 2 | 3 } | null>(null);
     const [isCheckinLocked, setIsCheckinLocked] = useState(false);
     const [currentTargetRotation, setCurrentTargetRotation] = useState<number | undefined>(undefined);
+    const [currentExpectedWinnerId, setCurrentExpectedWinnerId] = useState<string | undefined>(undefined);
     const [showCountdown, setShowCountdown] = useState(false);
     const [pendingSpinData, setPendingSpinData] = useState<{ spinTrigger: number; targetRotation: number; winnerId: string } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -153,7 +154,28 @@ export default function AdminPage() {
 
         // Generate target rotation for sync
         const newSpinTrigger = spinTrigger + 1;
-        const { targetRotation, winnerId } = generateTargetRotation(activeParticipants, allParticipants);
+
+        let targetRotation: number;
+        let winnerId: string;
+
+        try {
+            const result = generateTargetRotation(activeParticipants, allParticipants);
+            targetRotation = result.targetRotation;
+            winnerId = result.winnerId;
+        } catch (error) {
+            console.error('❌ Error generating target rotation:', error);
+            showAlert('Lỗi', 'Không thể chọn người thắng. Vui lòng thử lại!');
+            return;
+        }
+
+        // CRITICAL: Double-check that the selected winner is still active
+        // This prevents a race condition where a previous winner could be selected again
+        const selectedParticipant = participants.find(p => p.id === winnerId);
+        if (!selectedParticipant || selectedParticipant.status !== 'active') {
+            showAlert('Lỗi đồng bộ', 'Đã xảy ra lỗi trong quá trình chọn ngẫu nhiên. Vui lòng thử lại!');
+            console.error('❌ Selected winner is not active:', { winnerId, selectedParticipant });
+            return;
+        }
 
         // Store pending spin data including winnerId for consistency
         setPendingSpinData({ spinTrigger: newSpinTrigger, targetRotation, winnerId });
@@ -175,6 +197,7 @@ export default function AdminPage() {
         if (pendingSpinData) {
             setIsSpinning(true);
             setCurrentTargetRotation(pendingSpinData.targetRotation);
+            setCurrentExpectedWinnerId(pendingSpinData.winnerId);  // Pass winner ID for consistency
             setSpinTrigger(pendingSpinData.spinTrigger);
 
             // Broadcast spin event with exact rotation to guest pages
@@ -364,6 +387,7 @@ export default function AdminPage() {
                             onSpinComplete={handleSpinComplete}
                             spinTrigger={spinTrigger}
                             targetRotation={currentTargetRotation}
+                            expectedWinnerId={currentExpectedWinnerId}
                         />
                     </div>
 

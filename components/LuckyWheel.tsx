@@ -283,30 +283,49 @@ export default function LuckyWheel({
         let winnerParticipant: Participant;
 
         if (providedTargetRotation !== undefined) {
-            // providedTargetRotation is the DELTA rotation (how much to spin)
-            deltaRotation = providedTargetRotation;
-
-            // If expectedWinnerId is provided, use it directly for consistency
-            // This ensures admin and guest always agree on the winner
+            // If expectedWinnerId is provided, RECALCULATE rotation based on current wheel state
+            // This is critical because participant count may have changed since rotation was calculated
             if (expectedWinnerId) {
                 const expectedWinner = allParticipants.find(p => p.id === expectedWinnerId);
                 if (expectedWinner) {
+                    // CRITICAL: Verify the expected winner is still active (not already a winner)
+                    if (expectedWinner.status !== 'active') {
+                        console.error('❌ Expected winner is not active!', { expectedWinnerId, status: expectedWinner.status });
+                        // Don't proceed - this would be a duplicate win
+                        return;
+                    }
                     winnerParticipant = expectedWinner;
-                    console.log('🎯 Spin with expected winner (synced):', {
+
+                    // RECALCULATE rotation for current wheel configuration
+                    // Find winner's current index in allParticipants
+                    const winnerIndex = allParticipants.findIndex(p => p.id === expectedWinnerId);
+
+                    // Recalculate rotation to land on this segment with current segment count
+                    // Use same number of full rotations as originally intended
+                    const originalFullRotations = Math.floor(providedTargetRotation / (2 * Math.PI));
+                    const fullRotations = Math.max(5, originalFullRotations); // At least 5 full rotations
+                    deltaRotation = getRotationForSegment(winnerIndex, allParticipants.length, fullRotations);
+
+                    console.log('🎯 Spin with expected winner (RECALCULATED):', {
                         expectedWinnerId,
-                        winner: winnerParticipant?.alias || winnerParticipant?.name
+                        winner: winnerParticipant?.alias || winnerParticipant?.name,
+                        status: winnerParticipant?.status,
+                        winnerIndex,
+                        currentParticipantCount: allParticipants.length,
+                        originalRotation: providedTargetRotation * 180 / Math.PI,
+                        recalculatedRotation: deltaRotation * 180 / Math.PI
                     });
                 } else {
-                    // Fallback: calculate from rotation if winner not found
-                    // Since wheel resets to 0, finalRotation = 0 + deltaRotation = deltaRotation
+                    // Fallback: use provided rotation if winner not found
+                    deltaRotation = providedTargetRotation;
                     const finalRotation = deltaRotation;
                     const targetSegmentIndex = getSegmentAtPointer(finalRotation, allParticipants.length);
                     winnerParticipant = allParticipants[targetSegmentIndex];
                     console.log('🎯 Spin fallback (expected winner not found):', { expectedWinnerId });
                 }
             } else {
-                // No expectedWinnerId, calculate from rotation
-                // Since wheel resets to 0, finalRotation = deltaRotation
+                // No expectedWinnerId, use provided rotation
+                deltaRotation = providedTargetRotation;
                 const finalRotation = deltaRotation;
                 const targetSegmentIndex = getSegmentAtPointer(finalRotation, allParticipants.length);
                 winnerParticipant = allParticipants[targetSegmentIndex];
@@ -380,11 +399,23 @@ export default function LuckyWheel({
 
     // Trigger spin when spinTrigger changes
     useEffect(() => {
+        // When targetRotation is provided, we MUST have expectedWinnerId for consistency
+        // Only spin when both are available (for synced spins) or neither (for local spins)
+        const hasSyncData = targetRotation !== undefined;
+        const hasExpectedWinner = expectedWinnerId !== undefined;
+
         if (spinTrigger > 0 && spinTrigger !== lastSpinTrigger.current && isSpinning) {
+            // For synced spins (from admin/guest), require both targetRotation and expectedWinnerId
+            if (hasSyncData && !hasExpectedWinner) {
+                console.log('⏳ Waiting for expectedWinnerId before spinning...');
+                return; // Wait for expectedWinnerId to be set
+            }
+
             lastSpinTrigger.current = spinTrigger;
+            console.log('🎰 Triggering spin with:', { targetRotation, expectedWinnerId });
             spin(targetRotation);
         }
-    }, [spinTrigger, isSpinning, spin, targetRotation]);
+    }, [spinTrigger, isSpinning, spin, targetRotation, expectedWinnerId]);
 
     // Draw wheel on rotation change
     useEffect(() => {
@@ -434,11 +465,22 @@ export function generateTargetRotation(
     activeParticipants: Participant[],
     allParticipants: Participant[]
 ): { targetRotation: number; winnerIndex: number; winnerId: string } {
+    // CRITICAL: Ensure we have active participants to choose from
+    if (activeParticipants.length === 0) {
+        throw new Error('No active participants available for selection');
+    }
+
     const fullRotations = 5 + Math.random() * 5; // 5-10 full rotations
 
-    // Random pick from ACTIVE participants
+    // Random pick from ACTIVE participants ONLY
     const activeWinnerIndex = Math.floor(Math.random() * activeParticipants.length);
     const winner = activeParticipants[activeWinnerIndex];
+
+    // CRITICAL: Validate the winner is truly active (double-check)
+    if (winner.status !== 'active') {
+        console.error('❌ generateTargetRotation: Selected non-active participant!', winner);
+        throw new Error('Selected participant is not active');
+    }
 
     // Find winner's position in allParticipants array
     const allParticipantsIndex = allParticipants.findIndex(p => p.id === winner.id);
@@ -450,8 +492,10 @@ export function generateTargetRotation(
 
     console.log('🎲 generateTargetRotation:', {
         winner: winner.alias || winner.name,
+        winnerStatus: winner.status,
         allParticipantsIndex,
         totalParticipants: allParticipants.length,
+        activeCount: activeParticipants.length,
         targetRotationDegrees: targetRotation * 180 / Math.PI
     });
 
